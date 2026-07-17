@@ -134,7 +134,7 @@ _AGENT_PRESETS = {
     "claude": {
         "title": "🦀 任务已完成",
         "text": "Claude 已完成当前任务",
-        "image": _CDN + "@COMMIT_HASH_PLACEHOLDER/assets/clawd-crab.gif",
+        "image": _CDN + "@fe48e572d7ac51f2315f052008785fdc98e242d1/assets/clawd-crab.gif",
     },
     "codex": {
         "title": "🤖 任务已完成",

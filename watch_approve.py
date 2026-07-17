@@ -308,7 +308,7 @@ _AGENT_PRESETS = {
         "title": "🦀 Claude 待批准",
         # Claude Code 官方像素螃蟹 Clawd,动图(48 帧,会眨眼挪腿;手表上只显示静帧)。
         # 同仓库另有透明静态 PNG 兜底:.../assets/clawd-crab.png。
-        "image": _CDN + "@COMMIT_HASH_PLACEHOLDER/assets/clawd-crab.gif",
+        "image": _CDN + "@fe48e572d7ac51f2315f052008785fdc98e242d1/assets/clawd-crab.gif",
     },
     "codex": {
         "title": "🤖 Codex 待批准",

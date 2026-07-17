@@ -35,7 +35,7 @@
   <sub>危险操作 → 手表一震 → ✅ 点一下放行,agent 继续干活</sub>
 </div>
 
-▶️ **[完整介绍视频(30 秒)](https://cdn.jsdelivr.net/gh/LouringQ/agent-watch-approve@COMMIT_HASH_PLACEHOLDER/assets/showcase/intro.mp4)** —— 点开即播(备用:[仓库内文件](./assets/showcase/intro.mp4))
+▶️ **[完整介绍视频(30 秒)](https://cdn.jsdelivr.net/gh/LouringQ/agent-watch-approve@fe48e572d7ac51f2315f052008785fdc98e242d1/assets/showcase/intro.mp4)** —— 点开即播(备用:[仓库内文件](./assets/showcase/intro.mp4))
 
 <!-- 📺 抖音/B站视频发布后,把链接贴在这里 -->
 
