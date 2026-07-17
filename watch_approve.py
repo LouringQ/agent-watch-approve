@@ -114,6 +114,17 @@ TIMEOUT_DECISION = os.environ.get("APPROVE_TIMEOUT_DECISION", "ask").strip().low
 if TIMEOUT_DECISION not in ("allow", "deny", "ask"):
     TIMEOUT_DECISION = "ask"
 
+# 等待期间每隔 N 秒重发一次同一条通知(点新旧任一条都生效),更难错过;0 = 只发一次。
+try:
+    RENOTIFY_INTERVAL = int(float(os.environ.get("WATCH_RENOTIFY_INTERVAL", "120")))
+except ValueError:
+    RENOTIFY_INTERVAL = 120
+
+# 超时仍没人理 -> 退回终端前补一条无按钮「⏰ 你错过了」提醒,降低错过审批的概率。
+MISSED_ALERT = os.environ.get("WATCH_MISSED_ALERT", "1").strip() != "0"
+MISSED_TITLE = os.environ.get("WATCH_MISSED_TITLE", "⏰ 你错过了待处理").strip()
+MISSED_SOUND = os.environ.get("WATCH_MISSED_SOUND", "").strip()
+
 # ---------- 自动模式:iPhone 专注开关当总闸 ----------
 # 玩法:iPhone 建一个专注(比如「自动」),用「专注开启/关闭」个人自动化把 on/off 写到
 # iCloud Drive 的旗标文件。本 hook 每次只读这个【本地】文件(不耗网、不依赖 Pushcut),
@@ -526,10 +537,17 @@ TERMINAL_FORCED_PATHS = [
         "WATCH_TERMINAL_FORCED_PATHS",
         ".claude\\settings.json,.claude/settings.json,"
         ".claude\\settings.local.json,.claude/settings.local.json,"
-        ".claude\\hooks,.claude/hooks",
+        ".claude\\hooks,.claude/hooks,"
+        ".claude\\CLAUDE.md,.claude/CLAUDE.md",
     ).split(",")
     if p.strip()
 ]
+
+# shell(Bash/PowerShell)直接读写 .claude/projects(含 memory)同样会被 Claude Code 强制
+# 弹终端 -> 也该只提醒、不做手表审批。只对 shell 生效(写类工具走上面的主表,不含这条,
+# 避免把「AI 自己维护记忆」的正常写操作误当成需要提醒的强制确认)。跟随主开关:
+# WATCH_TERMINAL_FORCED_PATHS 清空即整套(含这张 shell 专用表)一起关闭。
+_SHELL_ONLY_FORCED_PATHS = (".claude/projects", ".claude\\projects")
 
 
 def is_terminal_forced(tool_name, tool_input):
@@ -538,12 +556,14 @@ def is_terminal_forced(tool_name, tool_input):
         return False
     if tool_name in _WRITE_TOOLS:
         text = str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+        paths = TERMINAL_FORCED_PATHS
     elif tool_name in ("Bash", "PowerShell"):
         text = str(tool_input.get("command") or "")
+        paths = TERMINAL_FORCED_PATHS + list(_SHELL_ONLY_FORCED_PATHS)
     else:
         return False
     text = text.lower()
-    return bool(text) and any(p in text for p in TERMINAL_FORCED_PATHS)
+    return bool(text) and any(p in text for p in paths)
 
 
 # ---------- 危险操作 -> 简短中文确认标签 ----------
@@ -1031,6 +1051,42 @@ def wait_for_decision(opener, since_ts, deadline, topic=None, tokens=None):
     return None
 
 
+def wait_with_renotify(opener, since_ts, deadline, topic, resend_fn):
+    """等回执,期间每隔 RENOTIFY_INTERVAL 秒重发一次同一条通知(点新旧任一条都生效),
+    降低错过审批的概率。RENOTIFY_INTERVAL<=0 时等价于直接调用一次 wait_for_decision。
+    重发失败(如代理抖动)吞掉异常继续等,不因此提前放弃这轮审批。
+    """
+    if RENOTIFY_INTERVAL <= 0:
+        return wait_for_decision(opener, since_ts, deadline, topic)
+    while True:
+        now = time.monotonic()
+        if now >= deadline:
+            return None
+        segment_deadline = min(deadline, now + RENOTIFY_INTERVAL)
+        result = wait_for_decision(opener, since_ts, segment_deadline, topic)
+        if result is not None:
+            return result
+        if segment_deadline >= deadline:
+            return None
+        try:
+            resend_fn()
+        except Exception:
+            pass
+
+
+def send_missed_alert(opener, body):
+    """超时仍没人理 -> 退回终端前补一条无按钮「你错过了」提醒(MISSED_ALERT=0 关闭)。
+    锦上添花的提醒,失败静默吞掉,绝不影响主流程照常退回终端审批。
+    """
+    if not MISSED_ALERT:
+        return
+    try:
+        send_notification(opener, MISSED_TITLE, body, with_actions=False,
+                          sound=(MISSED_SOUND or None))
+    except Exception:
+        pass
+
+
 def _dump_topic(reply_topic):
     """调试留痕(需 WATCH_DEBUG_DUMP=1):记下本次回执 topic。出问题时可去 ntfy 拉这个
     topic 的历史(GET /<topic>/json?poll=1&since=...),核对按钮实际发了什么。"""
@@ -1285,9 +1341,12 @@ def main():
             % type(e).__name__,
         )
 
-    # 4) 等手表回执(只听本次审批的回执 topic)
+    # 4) 等手表回执(只听本次审批的回执 topic),期间按 RENOTIFY_INTERVAL 重发提醒
     try:
-        decision = wait_for_decision(opener, t0, deadline, reply_topic)
+        decision = wait_with_renotify(
+            opener, t0, deadline, reply_topic,
+            lambda: send_notification(opener, title, text, reply_topic=reply_topic),
+        )
     except Exception:
         decision = None
 
@@ -1298,6 +1357,7 @@ def main():
     elif decision == "term":
         emit("ask", "watch-approve: 已在手表上选择「终端查看」,退回终端审批。")
     else:
+        send_missed_alert(opener, text)
         emit(
             TIMEOUT_DECISION,
             "watch-approve: %ss 内无回应,按超时策略返回 %s。"
