@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"/ABSOLUTE/PATH/TO/watch_approve.py\" --agent codex",
+            "statusMessage": "Waiting for watch approval",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"/ABSOLUTE/PATH/TO/watch_done.py\" --agent codex",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
